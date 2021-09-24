@@ -9,11 +9,12 @@ import (
 	"github.com/allegro/bigcache"
 	"github.com/bluele/gcache"
 	"github.com/coocood/freecache"
+	ristretto "github.com/dgraph-io/ristretto"
 	hashicorp "github.com/hashicorp/golang-lru"
 	koding "github.com/koding/cache"
 	"github.com/muesli/cache2go"
 	cache "github.com/patrickmn/go-cache"
-	ristretto "github.com/dgraph-io/ristretto"
+	pcache "github.com/pavel-krush/cache/v2/lru"
 )
 
 func toKey(i int) string {
@@ -170,13 +171,32 @@ func BenchmarkGCache(b *testing.B) {
 	})
 }
 
+func BenchmarkPcache(b *testing.B) {
+	c := pcache.New().WithCapacity(b.N).WithTTL(time.Second).WithDiscreteClock(time.Millisecond * 500).WithSync().Build()
+
+	b.Run("Set", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			c.Set(toKey(i), toKey(i))
+		}
+	})
+
+	b.Run("Get", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			value, err := c.Get(toKey(i))
+			if err == false {
+				_ = value
+			}
+		}
+	})
+}
+
 func BenchmarkRistretto(b *testing.B) {
 	cache, _ := ristretto.NewCache(&ristretto.Config{
 		NumCounters: 1e7,     // number of keys to track frequency of (10M).
 		MaxCost:     1 << 30, // maximum cost of cache (1GB).
 		BufferItems: 64,      // number of keys per Get buffer.
 	})
-	
+
 	b.Run("Set", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			cache.Set(toKey(i), toKey(i), 1)
@@ -191,9 +211,8 @@ func BenchmarkRistretto(b *testing.B) {
 			}
 		}
 	})
-	
-}
 
+}
 
 // No expire, but helps us compare performance
 func BenchmarkSyncMap(b *testing.B) {
